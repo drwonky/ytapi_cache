@@ -30,9 +30,13 @@ EOT;
 		$result = $this->dbconn->query($query);
 		if ($result !== TRUE) { // success with no result set or failure
 			if ($result !== FALSE) { // success with result set
-				$obj = $result->fetch_object();
-				$obj->affected_rows = $this->dbconn->affected_rows;
-				$result->free();
+				if ($this->dbconn->affected_rows > 0) {;
+					$obj = $result->fetch_object();
+					$obj->affected_rows = $this->dbconn->affected_rows;
+					$result->free();
+				} else {
+					$obj=TRUE;
+				}
 				return $obj;
 			} else { // success with no result set
 				return TRUE;
@@ -140,7 +144,7 @@ EOT;
 			$newdata = $this->query_api($endpoint,$query);
 
 			$this->insert_cache($endpoint,$query,$newdata);
-		} else if ($result !== TRUE && $result->age > 1800) {
+		} else if ($result !== TRUE && $result->age > 3600) {
 			$newdata = $this->query_api($endpoint,$query);
 
 			$this->update_cache($result->id,$newdata);
@@ -163,6 +167,7 @@ exit;
 
 $result = $cache->get_cache($endpoint,$_GET);
 
+//var_dump($result);
 echo($result."\n");
 
 ?>

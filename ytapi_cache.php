@@ -117,7 +117,9 @@ EOT;
 	public function update_cache($id,$newdata) {
 		$this->escape($newdata);
 
+		// timestamps only update when the data is different, kinda defeats the purpose of a cache
 		$query_string = "UPDATE ".self::TABLENAME." set ".
+				"last_updated = NOW(), ".
 				"result = '".$newdata."' ".
 				"WHERE id = ".$id;
 
@@ -144,10 +146,12 @@ EOT;
 			$newdata = $this->query_api($endpoint,$query);
 
 			$this->insert_cache($endpoint,$query,$newdata);
+			return $newdata;
 		} else if ($result !== TRUE && $result->age > 3600) {
 			$newdata = $this->query_api($endpoint,$query);
 
 			$this->update_cache($result->id,$newdata);
+			return $newdata;
 		} else if ($result !== FALSE) {
 			return $result->result;
 		}

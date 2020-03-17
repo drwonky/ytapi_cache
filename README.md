@@ -54,6 +54,15 @@ var url="https://example.com/path/to/ytapi_cache.php?endpoint=search&";
 Note the endpoint for the API service is /search, you set the endpoint name in
 the URL, then the rest of your query parameters are appended like usual.
 
+You may optionally specify a cache age parameter for each API call, by appending
+age=<INTEGER> to the query, you can set the cache lifetime for each API call.
+
+Example:
+
+var url="https://example.com/path/to/ytapi_cache.php?endpoint=search&age=900";
+
+The default age is 3600 seconds.
+
 4. Load your page, the ytapi_cache.php script will check if the api_cache table
    exists and create it if not.  It will then perform API lookups on your
    behalf.

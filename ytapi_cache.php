@@ -51,8 +51,7 @@ EOT;
 		$this->dbconn = new mysqli($mysql_server, $mysql_user, $mysql_password, $mysql_database);
 
 		if ($this->dbconn->connect_errno) {
-			echo json_encode("Sorry, this website is experiencing problems.");
-			return FALSE;
+			error_exit("Sorry, this website is experiencing problems.");
 		}
 
 		$obj = $this->query_row("SHOW TABLES LIKE '".self::TABLENAME."'");
@@ -137,7 +136,7 @@ EOT;
 		return $this->query_row($query_string);
 	}
 
-	public function get_cache($endpoint,$query) {
+	public function get_cache($endpoint,$query,$age) {
 		$this->escape($endpoint);
 		$this->sanitize($query);
 		$result = $this->lookup($endpoint,$query);
@@ -147,7 +146,7 @@ EOT;
 
 			$this->insert_cache($endpoint,$query,$newdata);
 			return $newdata;
-		} else if ($result !== TRUE && $result->age > 3600) {
+		} else if ($result !== TRUE && $result->age > $age) {
 			$newdata = $this->query_api($endpoint,$query);
 
 			$this->update_cache($result->id,$newdata);
@@ -162,14 +161,41 @@ $cache = new CacheDb;
 
 $cache->init();
 
-if (isset($_GET['endpoint'])) {
-	$endpoint=$_GET['endpoint'];
-	unset($_GET['endpoint']);
-} else {
-exit;
+function error_exit($msg) {
+	echo json_encode($msg)."\n";
+	exit;
 }
 
-$result = $cache->get_cache($endpoint,$_GET);
+if (isset($_GET['endpoint'])) {
+	$endpoint = filter_var($_GET['endpoint'],FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+	if ($age === false) {
+		error_exit(array("Error"=>"endpoint contains invalid characters"));
+	}
+	unset($_GET['endpoint']);
+} else {
+	error_exit(array("Error"=>"you must specify an endpoint"));
+}
+
+if (isset($_GET['age'])) {
+	$cache_age = filter_var($_GET['age'], FILTER_SANITIZE_NUMBER_INT);
+	if ($cache_age === false) {
+		error_exit(array("Error"=>"age must be an integer > 0"));
+	} else if ($cache_age === 0) {
+		$cache_age = 3600;
+	}
+	unset($_GET['age']);
+} else {
+	$cache_age = 3600;
+}
+
+
+$query_data = filter_var_array($_GET, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+
+if ($query_data === false) {
+	error_exit(array("Error"=>"query is invalid"));
+}
+
+$result = $cache->get_cache($endpoint,$query_data,$cache_age);
 
 //var_dump($result);
 echo($result."\n");

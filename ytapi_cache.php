@@ -15,6 +15,7 @@ result JSON,
 last_updated timestamp,
 part varchar(20) AS (JSON_UNQUOTE(query->"$.part")),
 apikey varchar(45) AS (JSON_UNQUOTE(query->"$.key")),
+etag varchar(64) AS (JSON_UNQUOTE(query->"$.etag")),
 key ep_part_key_ndx (endpoint,apikey,part)
 );
 EOT;
@@ -67,7 +68,7 @@ EOT;
 			array_push($jsonx,"query->'\$.$key' = '$value'");
 		}
 
-		$query_string = "SELECT id,result,unix_timestamp()-unix_timestamp(last_updated) as age from ".self::TABLENAME." ". 
+		$query_string = "SELECT id,result,etag,unix_timestamp()-unix_timestamp(last_updated) as age from ".self::TABLENAME." ". 
 				"WHERE endpoint = '".$endpoint."' and ". 
 				"part = '".
 				$query['part'].
@@ -90,7 +91,7 @@ EOT;
 		$string = $this->dbconn->escape_string($string);
 	}
 
-	public function query_api($endpoint,$query) {
+	public function query_api($endpoint,$query,$etag = FALSE) {
 		global $api_referer;
 
 		// URL encoding breaks the google API because it doesn't urldecode the query string
@@ -106,21 +107,31 @@ EOT;
 		$headers = [
 		'Referer: '.$api_referer
 		];
+		if ($etag !== FALSE) $headers[]='If-None-Match: '.$etag;
+
 		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 		$result = curl_exec($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		curl_close($ch);
 
+		if ($http_code == 304) return TRUE;
 		return $result;
 	}
 
-	public function update_cache($id,$newdata) {
+	public function update_cache($id,$newdata,$metadata_update = FALSE) {
 		$this->escape($newdata);
 
 		// timestamps only update when the data is different, kinda defeats the purpose of a cache
-		$query_string = "UPDATE ".self::TABLENAME." set ".
-				"last_updated = NOW(), ".
-				"result = '".$newdata."' ".
-				"WHERE id = ".$id;
+		if ($metadata_update !== TRUE) {
+			$query_string = "UPDATE ".self::TABLENAME." set ".
+					"last_updated = NOW(), ".
+					"result = '".$newdata."' ".
+					"WHERE id = ".$id;
+		} else {	// only update cache metadata if the contents are the same
+			$query_string = "UPDATE ".self::TABLENAME." set ".
+					"last_updated = NOW() ".
+					"WHERE id = ".$id;
+		}
 
 		return $this->query_row($query_string);
 	}
@@ -147,10 +158,18 @@ EOT;
 			$this->insert_cache($endpoint,$query,$newdata);
 			return $newdata;
 		} else if ($result !== TRUE && $result->age > $age) {
-			$newdata = $this->query_api($endpoint,$query);
+			$newdata = $this->query_api($endpoint,$query,$result->etag);
 
-			$this->update_cache($result->id,$newdata);
-			return $newdata;
+			if ($newdata === TRUE) {	// only metadata update
+				$this->update_cache($result->id,$newdata,TRUE);
+
+				$json=json_decode($result->result,true);
+				$json['age']=$result->age;
+				return json_encode($json);
+			} else {
+				$this->update_cache($result->id,$newdata);
+				return $newdata;
+			}
 		} else if ($result !== FALSE) {
 			return $result->result;
 		}
